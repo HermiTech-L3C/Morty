@@ -3,7 +3,7 @@
 This repository contains the Verilog files and related resources for the FPGA subfolder of the overall project. The project includes several key modules such as the CPU, FPGA core, UART communication, and top-level integration.
 
 ___
-![FPGAdiagram](https://github.com/HermiTech-LLC/Morty/blob/main/Images/FPGAdiagram.PNG)
+![FPGAdiagram](https://github.com/HermiTech-LLC/Morty/blob/main/Images/IMG_1620.jpeg)
 ___
 
 ## Files and Modules
