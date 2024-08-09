@@ -179,16 +179,19 @@ The system is designed to control a bipedal humanoid robot. It subscribes to ROS
 ### Power and Ground Connections
 
 - **GND**: Ground.
-- **ESP32_VCC**: Power supply for the ESP32 module.
-- **CPU_VCC**: Power supply for the CPU.
-- **RAM_VCC**: Power supply for the RAM.
-- **FPGA_VCC**: Power supply for the FPGA.
-- **FPGA_GND**: Ground for FPGA.
+- **i.MX8M_VCC**: Power supply for the NXP i.MX 8M Mini Quad.
+- **ZYNQ_VCC**: Power supply for the Xilinx Zynq MPSoC.
+- **LPDDR4_VCC**: Power supply for the Micron LPDDR4 4GB.
+- **EMMC_VCC**: Power supply for the Samsung eMMC 128GB.
+- **IMU_VCC**: Power supply for the Bosch BNO080.
+- **WIFI_BT_VCC**: Power supply for the Intel 9260NGW.
+- **TPU_VCC**: Power supply for the Google Coral Edge TPU.
+- **DRV_VCC**: Power supply for the TI DRV8432.
 - **USB_VCC**: Power supply for USB ports.
-- **ETH_VCC**: Power supply for Ethernet controller and port.
+- **ETH_VCC**: Power supply for the Ethernet controller and port.
 - **UART_VCC**: Power supply for UART communication module.
 - **PMIC_VCC**: Power supply from the Power Management IC.
-- **TPU_VCC**: Power supply for TPU.
+- **CLOCK_VCC**: Power supply for the Crystal Oscillator.
 - **FLASH_VCC**: Power supply for Flash memory.
 
 ### Helper Function
