@@ -16,7 +16,8 @@ ___
   - [Automate the Process](#automate-the-process)
 - [Usage](#usage)
 - [Detailed Descriptions](#detailed-descriptions)
-  - [`rospinn.py`](#rospinnpy)
+  - [`rosnode.py`](#rosnodepy)
+  - [`tpu.py`](#tpupy)
   - [`uart_comm.v`](#uart_commv)
   - [`top_L.v`](#top_lv)
   - [`cpu.v`](#cpuv)
@@ -38,23 +39,25 @@ This project implements a bipedal humanoid control system using a Physics-Inform
 
 ## Directory Structure
 
-- **`rospinn.py`**: Main ROS node script implementing the PINN and RL algorithms.
+- **`rosnode.py`**: Located in `/mother/Software_Firmware/rosnode.py`. This ROS node script is responsible for subscribing to sensor data topics, processing data, and publishing control signals.
+- **`tpu.py`**: Located in the root directory, this script handles the Physics-Informed Neural Network (PINN) and Reinforcement Learning (RL) logic, communication with FPGA, and optimization.
 - **`uart_comm.v`**: Verilog module for UART communication with FPGA.
 - **`top_L.v`**: Top-level Verilog module integrating all components.
 - **`cpu.v`**: Verilog module for the CPU.
 - **`fpga.v`**: Verilog module for the FPGA.
 - **`main.py`**: Script to compile the Verilog modules and run the ROS node.
-- **`mortymb.py`**: Defines the electronic components and connections for the robot’s motherboard using `gEDA`.
+- **`mortymb.py`**: Defines the electronic components and connections for the robotâs motherboard using `skidl`.
 - **`README.md`**: This file.
 
 ## Dependencies
 
 - ROS (Robot Operating System)
 - Python 3.x
-- PyTorch
+- TensorFlow
+- CasADi
 - scikit-learn
 - iverilog (for Verilog compilation)
-- pcbnew (for electronic design in Kipython)
+- KiCad (for electronic design)
 
 ## Setup
 
@@ -63,8 +66,8 @@ This project implements a bipedal humanoid control system using a Physics-Inform
 Ensure all dependencies are installed using the following commands:
 ```sh
 sudo apt-get install ros-humble-desktop-full
-sudo apt-get install iverilog
-pip install torch scikit-learn
+sudo apt-get install iverilog kicad
+pip install tensorflow casadi scikit-learn
 ```
 
 ### Compile the Verilog Modules
@@ -83,9 +86,9 @@ vvp fpga
 
 ### Run the ROS Node
 
-Start the ROS node that runs the PINN and RL algorithms:
+Start the ROS node that runs the system:
 ```sh
-rosrun rospinn rospinn.py
+rosrun bipedal_control rosnode.py
 ```
 
 ### Automate the Process
@@ -101,18 +104,27 @@ The system is designed to control a bipedal humanoid robot. It subscribes to ROS
 
 ## Detailed Descriptions
 
-### `rospinn.py`
+### `rosnode.py`
 
-- **Purpose**: Implements the main control algorithms for the robot using PINN and RL within a ROS node.
+- **Location**: `/mother/Software_Firmware/rosnode.py`
+- **Purpose**: Acts as the interface between ROS and the TPU module. It handles the collection, normalization, and transmission of sensor data to the TPU.
 - **Functionality**:
-  - Initializes the ROS node.
-  - Subscribes to sensor data topics (e.g., joint states, forces).
-  - Publishes control signals to actuate the robot.
-  - Utilizes a PINN to maintain stability and perform manipulation tasks.
-  - Uses RL to optimize control strategies based on feedback.
-___
-## fpga subdirectory
-### `uart_comm.v` 
+  - Initializes the ROS node and subscribers for sensor data.
+  - Normalizes sensor data using `StandardScaler`.
+  - Sends normalized data to the TPU module over a TCP/IP connection.
+  - Publishes the received control signals back to ROS for robot actuation.
+
+### `tpu.py`
+
+- **Location**: Root directory
+- **Purpose**: Implements the main control algorithms using the Physics-Informed Neural Network (PINN) and Reinforcement Learning (RL). It also handles communication with the FPGA.
+- **Functionality**:
+  - **PINN Architecture**: A deep neural network designed for stability and manipulation tasks.
+  - **Reinforcement Learning**: An RL agent to optimize control strategies over time.
+  - **Optimization**: Uses CasADi to define and solve optimization problems for control signals.
+  - **Communication**: Establishes serial communication with the FPGA and TCP/IP communication with the ROS node.
+
+### `uart_comm.v`
 
 - **Purpose**: Defines the Verilog module for UART communication with the FPGA.
 - **Functionality**:
@@ -139,27 +151,26 @@ ___
   - Implements FPGA operations and interfaces with the CPU and UART modules.
 
 ### `main.py`
+
 - **Purpose**: Automates the compilation of Verilog modules, execution of the ROS node, starts systemd services, and runs MicroPython scripts for centralized control interfacing.
 - **Functionality**:
   - Compiles the Verilog modules using `iverilog` and `vvp`.
-  - Runs the `rospinn.py` script using `rosrun`.
+  - Runs the `rosnode.py` script using `rosrun`.
   - Starts specified systemd services using `systemctl`.
   - Executes a specified MicroPython script for centralized control interfacing.
-___
 
 ## Schematics and Assembly
 
 ### `mortymb.py`
 
-- **Purpose**: Defines and connects the electronic components of the robot’s motherboard using `skidl` for electronic design automation.
+- **Purpose**: Defines and connects the electronic components of the robotâs motherboard using `skidl` for electronic design automation.
 - **Functionality**:
-  - Defines power supply nets and various components (ESP32, CPU, RAM, FPGA, USB, Ethernet, UART, PMIC, Clock, TPU, and Flash memory).
-  - Establishes connections between components.
-  - Adds decoupling capacitors for power stability.
-  - Generates netlist, schematic, and PCB layout files.
-  - Includes error checking and reporting using ERC (Electrical Rule Check).
-
-The `mortymb.py` script automates the process of creating a schematic for the motherboard by defining components, connecting them, and ensuring the design follows electrical rules. The script outputs the necessary files for further processing and PCB design.
+  - **Project Structure**: Creates a standard KiCad project structure with directories for schematic files, footprints, symbols, 3D models, and output files (Gerber, BOM, Netlist).
+  - **Component Definition and Connection**: Defines components such as the NXP i.MX 8M Mini Quad, Xilinx Zynq MPSoC, and others, and establishes power and data connections between them.
+  - **File Generation**: Generates netlist, BOM, Gerber files, and exports these in the appropriate formats.
+  - **Library Integration**: Downloads and integrates component libraries (footprints and symbols) from provided URLs.
+  - **Git Integration**: Initializes a Git repository and commits the initial project structure.
+  - **Customization**: Configures project settings and user preferences for the KiCad project.
 
 ## Appendix
 
@@ -190,19 +201,31 @@ The `mortymb.py` script automates the process of creating a schematic for the mo
 
 The script defines the following components:
 
-- **ESP32**: ESP32-WROOM-32 module.
-- **CPU**: ATmega2560.
-- **RAM**: MT48LC16M16A2P-75 (SDRAM).
-- **FPGA**: Xilinx XC7A35T-1FTG256C.
-- **UART Communication**: MAX232.
-- **PMIC**: TPS65217.
-- **USB Controller**: USB3320C-EZK.
-- **USB Ports**: Multiple USB ports.
-- **Ethernet Controller**: LAN8720.
-- **Ethernet Port**: RJ45 Ethernet port.
-- **Clock Generator**: SI5351A-B-GT.
-- **TPU**: Edge TPU.
-- **Flash Memory**: W25Q64FVSSIG.
+- **U1**: NXP i.MX 8M Mini Quad, BGA-400.
+- **U2**: Xilinx Zynq MPSoC, BGA-484.
+- **U3**: Micron LPDDR4 4GB, BGA-178.
+- **U4**: Samsung eMMC 128GB, BGA-153.
+- **U5**: Bosch BNO080, LGA-28.
+- **U6**: Intel 9260NGW, M.2 (2230).
+- **U7**: Google Coral Edge TPU, M.2 Key E.
+- **U8**: TI DRV8432, HTSSOP-36.
+- **U9**: TI TPS65988, VQFN-48.
+- **U10**: Analog ADP5054, LFCSP-32.
+- **C1-C20**: 100nF Capacitors, 0805.
+- **L1**: Inductor (Power Filter), 0603.
+- **C21-C22**: 22uF Capacitors, 0805.
+- **R1-R2**: 10kΩ Resistors, 0603.
+- **U11**: Crystal Oscillator, 4-pin.
+- **D1**: Schottky Diode, SOD-123.
+- **U12**: Level Shifter, TSSOP-8.
+- **Q1**: N-Channel MOSFET, SOT-23.
+- **C23-C24**: 100uF Capacitors, 1210.
+- **R3-R4**: 47Ω Resistors, 0603.
+- **U13**: RTC (Real-Time Clock), SOIC-8.
+- **U14**: EEPROM, SOIC-8.
+- **J1**: Main Power Connector, Through-hole.
+- **J2**: Programming Header, Through-hole.
+- **J3**: UART Header, Through-hole.
 
 ### Connections
 
