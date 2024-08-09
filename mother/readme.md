@@ -15,7 +15,7 @@ This README provides a comprehensive guide to the project's design, focusing on 
 
 ## Conceptual Representation
 
-![mortDiagram](https://github.com/HermiTech-LLC/Morty/blob/main/Images/Mortboard.PNG)
+![mortDiagram](https://github.com/HermiTech-LLC/Morty/blob/main/Images/MortBoard%20-%20for%20Paris%20Cookie%20Tin.png)
 
 ## Power Distribution
 
