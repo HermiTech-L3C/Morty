@@ -5,7 +5,8 @@ This repository contains the Verilog files and related resources for the FPGA su
 ___
 ![FPGAdiagram](https://github.com/HermiTech-LLC/Morty/blob/main/Images/IMG_1620.jpeg)
 
-[amd docs](https://docs.amd.com/r/en-US/ug1085-zynq-ultrascale-trm/Power-Domains-and-Islands)
+For FPGA design and development, download [Vivado Design Suite](https://www.amd.com/en/products/design-software/vivado) from AMD, which offers comprehensive tools for the design, simulation, and implementation of Xilinx FPGAs.
+
 ___
 
 ## Files and Modules
