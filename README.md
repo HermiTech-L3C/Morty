@@ -236,31 +236,31 @@ The `mortymb.py` script establishes connections for power and data lines between
 
 - **Power and Ground Connections**:
   - Connects each component’s power and ground pins to the respective power nets.
-  - Example: `vcc += cpu['VCC']`.
+  - Example: `vcc += zynq['VCC']`.
 
-- **CPU and RAM**:
-  - Connects address and data lines between the CPU and RAM modules.
-  - Example: `cpu['AD0', 'AD1', ...] += ram['DQ0', 'DQ1', ...]`.
+- **i.MX 8M Mini Quad and RAM**:
+  - Connects address and data lines between the i.MX 8M Mini Quad and LPDDR4 RAM modules.
+  - Example: `imx['AD0', 'AD1', ...] += ram['DQ0', 'DQ1', ...]`.
 
 - **FPGA**:
   - Connects FPGA power and ground pins.
   - Example: `vcc += fpga['VCC']`.
 
 - **UART Communication**:
-  - Connects UART communication lines between the ESP32, CPU, and UART module.
-  - Example: `esp32['GPIO1'] += uart['T1IN']`.
+  - Connects UART communication lines between the i.MX 8M Mini Quad, Zynq MPSoC, and UART module.
+  - Example: `imx['GPIO1'] += uart['T1IN']`.
 
-- **ESP32 to USB**:
-  - Connects data lines between ESP32 and USB controller.
-  - Example: `esp32['GPIO21'] += usb['DP']`.
+- **i.MX 8M Mini Quad to USB**:
+  - Connects data lines between the i.MX 8M Mini Quad and USB controller.
+  - Example: `imx['GPIO21'] += usb['DP']`.
 
-- **ESP32 to Ethernet**:
-  - Connects data lines between ESP32 and Ethernet controller.
-  - Example: `esp32['GPIO0'] += eth['TXEN']`.
+- **i.MX 8M Mini Quad to Ethernet**:
+  - Connects data lines between the i.MX 8M Mini Quad and Ethernet controller.
+  - Example: `imx['GPIO0'] += eth['TXEN']`.
 
 - **PMIC**:
   - Connects the PMIC to provide regulated power to various components.
-  - Example: `pmic['OUT1'] += cpu['VCC']`.
+  - Example: `pmic['OUT1'] += imx['VCC']`.
 
 ### GPIO Capabilities
 
