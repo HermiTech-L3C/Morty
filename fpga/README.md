@@ -5,7 +5,7 @@ This repository contains the Verilog files and related resources for the FPGA su
 ___
 ![FPGAdiagram](https://github.com/HermiTech-LLC/Morty/blob/main/Images/IMG_1620.jpeg)
 
-For FPGA design and development, checkout [amd Vivado/ vitis Design Suites](https://www.xilinx.com/products/design-tools.html) from AMD, which offers comprehensive tools for the design, simulation, and implementation of Xilinx FPGAs.
+For FPGA design and development, checkout [amd Vivado/ vitis Design Suites](https://www.xilinx.com/products/design-tools.html) from AMD, which offer comprehensive tools for the design, simulation, and implementation of Xilinx FPGAs.
 
 ___
 
