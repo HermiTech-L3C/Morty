@@ -268,4 +268,4 @@ The current design includes GPIO (General Purpose Input/Output) integration for 
 
 ## Conclusion
 
-This project aims to provide a comprehensive system for controlling a bipedal humanoid robot. By integrating advanced hardware with sophisticated software algorithms, the robot can achieve stable and optimized performance in real-time environments.
+This project aims to provide a comprehensive system for controlling a bipedal humanoid robot and integrating advanced hardware with sophisticated software algorithm so the robot can achieve stable and optimized performance in real-time environments.
