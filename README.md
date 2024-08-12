@@ -280,6 +280,11 @@ Example code from `mortymb.py` to add decoupling capacitors:
 
 ```python
 from skidl import Part, Net
+'''
+if im even using skidl
+at this point... *needing outside footprints 
+and kicad 8.
+'''
 
 def add_decoupling_caps(part, pin_name, gnd, num_caps=2):
     for _ in range(num_caps):
