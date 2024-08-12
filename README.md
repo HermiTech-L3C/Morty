@@ -283,7 +283,7 @@ from skidl import Part, Net
 '''
 if im even using skidl
 at this point... *needing outside footprints 
-and kicad 8.
+and kicad 8.🙄
 '''
 
 def add_decoupling_caps(part, pin_name, gnd, num_caps=2):
