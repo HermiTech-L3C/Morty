@@ -4,16 +4,22 @@ import numpy as np
 import socket
 import serial
 import casadi as ca
+from pynq import Overlay, allocate  # PYNQ library to interface with the FPGA
 
-# Neural Network Architecture for PINN
+# Load FPGA overlay
+overlay = Overlay("/path/to/your/bitstream.bit")  # Ensure the correct bitstream is loaded
+dma = overlay.axi_dma_0  # Access the DMA interface for data transfer
+
+# Neural Network Architecture for PINN with FPGA Acceleration
 class BipedalHumanoidPINN(models.Model):
-    def __init__(self):
+    def __init__(self, use_fpga=True):
         super(BipedalHumanoidPINN, self).__init__()
         self.fc1 = layers.Dense(512, activation='relu', input_shape=(60,))
         self.fc2 = layers.Dense(512, activation='relu')
         self.fc3 = layers.Dense(256, activation='relu')
         self.fc4 = layers.Dense(60)
         self.dropout = layers.Dropout(0.4)
+        self.use_fpga = use_fpga
 
     def call(self, inputs, training=False):
         x = self.fc1(inputs)
@@ -21,68 +27,30 @@ class BipedalHumanoidPINN(models.Model):
         if training:
             x = self.dropout(x)
         x = self.fc3(x)
+
+        if self.use_fpga:
+            x = self.offload_to_fpga(x)  # Offload specific operations to FPGA
+
         control_signals = self.fc4(x)
         return control_signals
 
-# Physics-Informed Loss Function remains the same
-def calculate_com_position(control_signals):
-    return tf.reduce_mean(control_signals[:, :30], axis=1, keepdims=True)
+    def offload_to_fpga(self, data):
+        # Allocate input and output buffers in external SSD
+        input_buffer = allocate(shape=data.shape, dtype=np.float32)
+        output_buffer = allocate(shape=data.shape, dtype=np.float32)
 
-def calculate_desired_com_position(batch_size):
-    return tf.zeros((batch_size, 1))
+        # Copy data to input buffer
+        np.copyto(input_buffer, data)
 
-def calculate_object_interaction(control_signals):
-    object_position = control_signals[:, :30]
-    object_force = control_signals[:, 30:60]
-    return object_position, object_force
+        # Start DMA transfer to the FPGA
+        dma.sendchannel.transfer(input_buffer)
+        dma.recvchannel.transfer(output_buffer)
+        dma.sendchannel.wait()
+        dma.recvchannel.wait()
 
-def calculate_desired_object_interaction(batch_size):
-    desired_object_position = tf.zeros((batch_size, 30))
-    desired_object_force = tf.zeros((batch_size, 30))
-    return desired_object_position, desired_object_force
-
-def physics_informed_loss(model, inputs, k_stability=0.01):
-    control_signals = model(inputs)
-    batch_size = tf.shape(inputs)[0]
-
-    com_position = calculate_com_position(control_signals)
-    desired_com_position = calculate_desired_com_position(batch_size)
-    stability_loss = tf.reduce_mean(tf.square(com_position - desired_com_position))
-
-    object_position, object_force = calculate_object_interaction(control_signals)
-    desired_object_position, desired_object_force = calculate_desired_object_interaction(batch_size)
-    manipulation_loss = tf.reduce_mean(tf.square(object_position - desired_object_position)) + tf.reduce_mean(tf.square(object_force - desired_object_force))
-
-    total_loss = stability_loss + k_stability * manipulation_loss
-    return total_loss
-
-# Reinforcement Learning Agent integrated with Dreamer for high-level planning
-class RLAgent(models.Model):
-    def __init__(self, input_dim, action_dim, dreamer_model):
-        super(RLAgent, self).__init__()
-        self.fc1 = layers.Dense(256, activation='relu', input_shape=(input_dim,))
-        self.fc2 = layers.Dense(256, activation='relu')
-        self.fc3 = layers.Dense(action_dim)
-        self.value_head = layers.Dense(1)
-        self.log_std = tf.Variable(tf.zeros(action_dim), trainable=True)
-        self.dreamer_model = dreamer_model  # Integrate Dreamer model for high-level planning
-
-    def call(self, x):
-        # Get high-level action plans from Dreamer
-        imagined_state = self.dreamer_model.encode(x)
-        planned_actions, _ = self.dreamer_model.policy(imagined_state)
-
-        # Pass planned actions through the network to fine-tune
-        x = self.fc1(planned_actions)
-        x = self.fc2(x)
-        action_mean = self.fc3(x)
-        value = self.value_head(x)
-        return action_mean, value
-
-    def select_action(self, state):
-        action_mean, _ = self.call(state)
-        action_dist = tf.random.normal(action_mean.shape, mean=action_mean, stddev=tf.exp(self.log_std))
-        return action_dist, tf.reduce_sum(tf.math.log(action_dist), axis=-1)
+        # Copy results from the output buffer
+        processed_data = np.copy(output_buffer)
+        return processed_data
 
 # Define the optimization problem using CasADi with integration of Dreamer’s planning
 def define_optimization_problem(dreamer_goals):
