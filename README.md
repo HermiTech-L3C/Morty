@@ -264,6 +264,39 @@ The `mortymb.py` script establishes connections for power and data lines between
   - Connects the PMIC to provide regulated power to various components.
   - Example: `pmic['OUT1'] += imx['VCC']`.
 
+### Decoupling Capacitors
+
+Decoupling capacitors are essential for stabilizing the power supply to each component by filtering out noise and preventing voltage drops, which can be caused by sudden changes in current draw. The following guidelines are implemented in the `mortymb.py` script to add decoupling capacitors for each major component:
+
+- **Placement**: Decoupling capacitors are placed as close as possible to the power pins of each component to minimize inductive effects in the power supply traces.
+- **Capacitor Values**:
+  - **0.1 µF Capacitors**: Used for high-frequency noise filtering. These are the most common decoupling capacitors and are placed across the power supply pins of every IC.
+  - **10 µF Capacitors**: Used for lower frequency filtering and provide bulk capacitance to support power demands during sudden changes in load.
+- **Pin Connections**:
+  - Each power pin of a component is connected to both a 0.1 µF and a 10 µF capacitor.
+  - The capacitors are connected between the power pin and ground.
+
+Example code from `mortymb.py` to add decoupling capacitors:
+
+```python
+from skidl import Part, Net
+
+def add_decoupling_caps(part, pin_name, gnd, num_caps=2):
+    for _ in range(num_caps):
+        cap = Part('Device', 'C', value='0.1uF')
+        cap[1] += part[pin_name]
+        cap[2] += gnd
+    bulk_cap = Part('Device', 'C', value='10uF')
+    bulk_cap[1] += part[pin_name]
+    bulk_cap[2] += gnd
+
+# Example usage:
+vcc = Net('VCC')
+gnd = Net('GND')
+imx = Part('Processor', 'iMX8M', footprint='BGA-400')
+add_decoupling_caps(imx, 'VCC', gnd)
+```
+
 ### GPIO Capabilities
 
 The current design includes GPIO (General Purpose Input/Output) integration for enhanced sensor interfacing and integral control capabilities, making the system versatile for future expansions and customizations.
