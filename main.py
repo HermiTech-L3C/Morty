@@ -34,7 +34,7 @@ def run_ros_pinn():
         subprocess.CalledProcessError: If there is an error during the ROS PINN execution process.
     """
     try:
-        subprocess.run(['rosrun', 'rospinn', 'rospinn.py'], check=True, cwd='mother/Software/Firmware')
+        subprocess.run(['rosrun', 'rospinn', 'rospinn.py'], check=True, cwd='mother/Software_Firmware')
         print("ROS PINN node executed successfully.")
     except subprocess.CalledProcessError as e:
         print(f"Error during ROS PINN execution: {e}")
@@ -79,7 +79,11 @@ def run_micropython(script_path):
     except subprocess.CalledProcessError as e:
         print(f"Error executing MicroPython script {script_path}: {e}")
 
-if __name__ == "__main__":
+def setup_environment():
+    """
+    Performs the initial setup, including Verilog compilation, systemd service startup,
+    and initializing ROS nodes and topics. Also sets up the environment for the PINN model and FPGA.
+    """
     # Compile Verilog
     compile_verilog()
 
@@ -99,15 +103,47 @@ if __name__ == "__main__":
     control_pub = initialize_ros_node()
     subscribe_to_ros_topics()
 
-    # Initialize models and optimizers
-    pinn_model = BipedalHumanoidPINN()
-    rl_agent = RLAgent(input_dim=60, action_dim=60)
+def initialize_models_and_optimizers():
+    """
+    Initializes the PINN model, RL agent, and their respective optimizers.
+    
+    Returns:
+        tuple: Initialized models and optimizers (pinn_model, rl_agent, optimizer_pinn, optimizer_rl).
+    """
+    pinn_model = BipedalHumanoidPINN(use_fpga=True)
+    dreamer_model = DreamerModel(input_dim=60, action_dim=60)  # Example Dreamer model initialization
+    rl_agent = RLAgent(input_dim=60, action_dim=60, dreamer_model=dreamer_model)
     optimizer_pinn = optimizers.Adam(learning_rate=0.001)
     optimizer_rl = optimizers.Adam(learning_rate=0.001)
+    
+    return pinn_model, rl_agent, optimizer_pinn, optimizer_rl
+
+def orchestrate_dreamer_training(pinn_model, rl_agent, optimizer_pinn, optimizer_rl, inputs, num_epochs=1000):
+    """
+    Trains the PINN and RL agent with the integration of Dreamer model, ensuring that high-level
+    planning from Dreamer is incorporated into the training process.
+
+    Args:
+        pinn_model: The PINN model instance.
+        rl_agent: The RL agent instance.
+        optimizer_pinn: Optimizer for the PINN model.
+        optimizer_rl: Optimizer for the RL agent.
+        inputs: Input data for training.
+        num_epochs (int): Number of epochs for training.
+    """
+    train(pinn_model, rl_agent, optimizer_pinn, optimizer_rl, inputs, num_epochs)
+
+def main():
+    setup_environment()
+
+    # Initialize models and optimizers
+    pinn_model, rl_agent, optimizer_pinn, optimizer_rl = initialize_models_and_optimizers()
 
     # Replace 'inputs' with actual input data
     inputs = np.random.rand(100, 60).astype(np.float32)  # Example input data
-    train(pinn_model, rl_agent, optimizer_pinn, optimizer_rl, inputs, num_epochs=1000)
+
+    # Orchestrate the training process with Dreamer integration
+    orchestrate_dreamer_training(pinn_model, rl_agent, optimizer_pinn, optimizer_rl, inputs, num_epochs=1000)
 
     # Initialize serial communication with FPGA
     ser = serial.Serial('/dev/ttyUSB0', 9600)
@@ -118,3 +154,6 @@ if __name__ == "__main__":
 
     # Run ROS node main loop
     rospy.spin()
+
+if __name__ == "__main__":
+    main()
