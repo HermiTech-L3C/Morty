@@ -24,7 +24,7 @@ class BipedalHumanoidPINN(models.Model):
         control_signals = self.fc4(x)
         return control_signals
 
-# Physics-Informed Loss Function
+# Physics-Informed Loss Function remains the same
 def calculate_com_position(control_signals):
     return tf.reduce_mean(control_signals[:, :30], axis=1, keepdims=True)
 
@@ -56,18 +56,24 @@ def physics_informed_loss(model, inputs, k_stability=0.01):
     total_loss = stability_loss + k_stability * manipulation_loss
     return total_loss
 
-# Reinforcement Learning Agent
+# Reinforcement Learning Agent integrated with Dreamer for high-level planning
 class RLAgent(models.Model):
-    def __init__(self, input_dim, action_dim):
+    def __init__(self, input_dim, action_dim, dreamer_model):
         super(RLAgent, self).__init__()
         self.fc1 = layers.Dense(256, activation='relu', input_shape=(input_dim,))
         self.fc2 = layers.Dense(256, activation='relu')
         self.fc3 = layers.Dense(action_dim)
         self.value_head = layers.Dense(1)
         self.log_std = tf.Variable(tf.zeros(action_dim), trainable=True)
+        self.dreamer_model = dreamer_model  # Integrate Dreamer model for high-level planning
 
     def call(self, x):
-        x = self.fc1(x)
+        # Get high-level action plans from Dreamer
+        imagined_state = self.dreamer_model.encode(x)
+        planned_actions, _ = self.dreamer_model.policy(imagined_state)
+
+        # Pass planned actions through the network to fine-tune
+        x = self.fc1(planned_actions)
         x = self.fc2(x)
         action_mean = self.fc3(x)
         value = self.value_head(x)
@@ -78,23 +84,16 @@ class RLAgent(models.Model):
         action_dist = tf.random.normal(action_mean.shape, mean=action_mean, stddev=tf.exp(self.log_std))
         return action_dist, tf.reduce_sum(tf.math.log(action_dist), axis=-1)
 
-# Initialize TCP/IP communication with ROS node
-def initialize_socket_connection():
-    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_socket.bind(('0.0.0.0', 5000))  # Replace with appropriate IP and PORT if needed
-    server_socket.listen(1)
-    print("Waiting for connection...")
-    conn, addr = server_socket.accept()
-    print(f"Connected by {addr}")
-    return conn
-
-# Define the optimization problem using CasADi
-def define_optimization_problem():
+# Define the optimization problem using CasADi with integration of Dreamer’s planning
+def define_optimization_problem(dreamer_goals):
     n_controls = 60
     u = ca.MX.sym('u', n_controls)
 
-    # Define the objective function (example: minimize the control effort)
-    objective = ca.mtimes(u.T, u)
+    # Objective: Minimize control effort while achieving goals set by Dreamer
+    effort_objective = ca.mtimes(u.T, u)
+    goal_tracking_objective = ca.sumsqr(u - dreamer_goals)
+
+    objective = effort_objective + 0.1 * goal_tracking_objective  # Weighted sum of objectives
 
     # Define constraints (example: control signals must be within certain limits)
     lb_u = -np.ones(n_controls) * 1.0  # Lower bound for control signals
@@ -106,7 +105,29 @@ def define_optimization_problem():
     
     return solver, lb_u, ub_u
 
-solver, lb_u, ub_u = define_optimization_problem()
+# Cross-communication between Dreamer and CasADi
+def optimize_with_casadi(dreamer_model, inputs):
+    # Get high-level goals from Dreamer
+    dreamer_goals = dreamer_model(inputs)
+
+    # Define the optimization problem based on Dreamer's goals
+    solver, lb_u, ub_u = define_optimization_problem(dreamer_goals)
+
+    # Solve the optimization problem
+    sol = solver(x0=dreamer_goals, lbx=lb_u, ubx=ub_u)
+    optimized_controls = sol['x'].full().flatten()
+
+    return optimized_controls
+
+# Initialize TCP/IP communication with ROS node
+def initialize_socket_connection():
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_socket.bind(('0.0.0.0', 5000))  # Replace with appropriate IP and PORT if needed
+    server_socket.listen(1)
+    print("Waiting for connection...")
+    conn, addr = server_socket.accept()
+    print(f"Connected by {addr}")
+    return conn
 
 # Initialize serial communication with FPGA
 def initialize_serial(port='/dev/ttyUSB0', baudrate=9600):
@@ -134,7 +155,8 @@ def communicate_with_fpga(control_signals):
 def main():
     conn = initialize_socket_connection()
     pinn_model = BipedalHumanoidPINN()
-    rl_agent = RLAgent(input_dim=60, action_dim=60)
+    dreamer_model = DreamerModel(input_dim=60, action_dim=60)  # Example Dreamer model initialization
+    rl_agent = RLAgent(input_dim=60, action_dim=60, dreamer_model=dreamer_model)
     optimizer_pinn = optimizers.Adam(learning_rate=0.001)
     optimizer_rl = optimizers.Adam(learning_rate=0.001)
 
@@ -144,9 +166,15 @@ def main():
             if not data:
                 break
             inputs = np.frombuffer(data, dtype=np.float32).reshape(1, -1)
-            control_signals = pinn_model(inputs)
-            optimized_control_signals = communicate_with_fpga(control_signals)
-            conn.sendall(optimized_control_signals.tobytes())
+
+            # Use the integrated Dreamer and CasADi to optimize control signals
+            optimized_control_signals = optimize_with_casadi(dreamer_model, inputs)
+
+            # Communicate with FPGA and refine control signals
+            final_control_signals = communicate_with_fpga(optimized_control_signals)
+
+            # Send the final control signals back to the ROS node
+            conn.sendall(final_control_signals.tobytes())
         except socket.error as e:
             print(f"Socket error: {e}")
             break
