@@ -29,55 +29,80 @@ def install_dependencies():
             logging.info(f"{dependency} is already installed.")
 
 def get_kicad_project_structure(project_name):
-    """Return the standard KiCad project structure."""
+    """Return the standard KiCad project structure as a nested dict.
+
+    Each key is a directory name; its value is a dict with:
+      - ``"files"``: list of filenames to create inside the directory.
+      - Any other key: a nested sub-directory dict with the same schema.
+    """
     return {
-        project_name: [
-            f"{project_name}.kicad_pro",
-            f"{project_name}.kicad_sch",
-            f"{project_name}.kicad_pcb",
-            "config": [
-                "project_settings.json",
-                "user_preferences.json"
+        project_name: {
+            "files": [
+                f"{project_name}.kicad_pro",
+                f"{project_name}.kicad_sch",
+                f"{project_name}.kicad_pcb",
             ],
-            "schematic": [
-                "system_on_chip.sch",
-                "memory.sch",
-                "sensors.sch",
-                "wireless_communication.sch",
-                "power_management.sch",
-                "clocking.sch",
-                "interface_connectivity.sch",
-            ],
-            "footprints": [
-                "footprints.pretty/"
-            ],
-            "symbols": [
-                "symbols.lib"
-            ],
-            "3dmodels": [],
-            "output": [
-                "Gerber/",
-                "BOM/",
-                "Step/",
-                "Netlist/"
-            ],
-            "docs": [
-                "README.md",
-                "CHANGELOG.md",
-                "LICENSE"
-            ],
-            "scripts": [
-                "generate_bom.py",
-                "generate_gerbers.py",
-                "export_netlist.py"
-            ]
-        ]
+            "config": {
+                "files": [
+                    "project_settings.json",
+                    "user_preferences.json",
+                ],
+            },
+            "schematic": {
+                "files": [
+                    "system_on_chip.sch",
+                    "memory.sch",
+                    "sensors.sch",
+                    "wireless_communication.sch",
+                    "power_management.sch",
+                    "clocking.sch",
+                    "interface_connectivity.sch",
+                ],
+            },
+            "footprints": {
+                "files": [],
+                "footprints.pretty": {"files": []},
+            },
+            "symbols": {
+                "files": ["symbols.lib"],
+            },
+            "3dmodels": {
+                "files": [],
+            },
+            "output": {
+                "files": [],
+                "Gerber": {"files": []},
+                "BOM": {"files": []},
+                "Step": {"files": []},
+                "Netlist": {"files": []},
+            },
+            "docs": {
+                "files": [
+                    "README.md",
+                    "CHANGELOG.md",
+                    "LICENSE",
+                ],
+            },
+            "scripts": {
+                "files": [
+                    "generate_bom.py",
+                    "generate_gerbers.py",
+                    "export_netlist.py",
+                ],
+            },
+        }
     }
 
 def create_structure(base_path, structure):
-    """Recursively create the directory structure."""
-    for key, value in structure.items():
-        dir_path = os.path.join(base_path, key)
+    """Recursively create the directory and file structure.
+
+    ``structure`` is a nested dict where each key is a directory name and its
+    value is a dict.  The special key ``"files"`` holds a list of filenames to
+    create inside the current directory; all other keys are treated as
+    sub-directories and processed recursively.
+    """
+    for dir_name, contents in structure.items():
+        dir_path = os.path.join(base_path, dir_name)
         try:
             os.makedirs(dir_path, exist_ok=True)
             logging.info(f"Created directory: {dir_path}")
@@ -85,23 +110,21 @@ def create_structure(base_path, structure):
             logging.error(f"Failed to create directory {dir_path}: {e}")
             sys.exit(1)
 
-        for item in value:
-            item_path = os.path.join(dir_path, item)
-            if item.endswith('/'):
-                try:
-                    os.makedirs(item_path, exist_ok=True)
-                    logging.info(f"Created directory: {item_path}")
-                except OSError as e:
-                    logging.error(f"Failed to create directory {item_path}: {e}")
-                    sys.exit(1)
+        for key, value in contents.items():
+            if key == "files":
+                # Create placeholder files listed under the "files" key
+                for filename in value:
+                    file_path = os.path.join(dir_path, filename)
+                    try:
+                        with open(file_path, 'w') as f:
+                            f.write(f"This is a placeholder for {filename}")
+                        logging.debug(f"Created placeholder: {file_path}")
+                    except OSError as e:
+                        logging.error(f"Failed to create file {file_path}: {e}")
+                        sys.exit(1)
             else:
-                try:
-                    with open(item_path, 'w') as f:
-                        f.write(f"This is a placeholder for {item}")
-                    logging.debug(f"Created placeholder for {item}")
-                except OSError as e:
-                    logging.error(f"Failed to create file {item_path}: {e}")
-                    sys.exit(1)
+                # Recurse into sub-directory
+                create_structure(dir_path, {key: value})
 
 def initialize_git_repository(base_path):
     """Initialize a Git repository and make the initial commit."""
@@ -125,7 +148,7 @@ def create_kicad_project_structure(project_name):
         sys.exit(1)
 
     logging.info(f"Creating project structure for {project_name} at {base_path}")
-    create_structure(base_path, {project_name: structure[project_name]})
+    create_structure(base_path, structure)
     initialize_git_repository(base_path)
 
 def download_file(url, destination):
@@ -140,10 +163,14 @@ def download_file(url, destination):
             for data in response.iter_content(1024):
                 downloaded += len(data)
                 f.write(data)
-                done = int(50 * downloaded / total_size)
-                sys.stdout.write(f"\r[{'=' * done}{' ' * (50-done)}] {done*2}%")
-                sys.stdout.flush()
-        logging.info(f"Downloaded {destination} ({total_size / (1024 * 1024):.2f} MB)")
+                if total_size:
+                    done = int(50 * downloaded / total_size)
+                    sys.stdout.write(f"\r[{'=' * done}{' ' * (50-done)}] {done*2}%")
+                    sys.stdout.flush()
+        if total_size:
+            logging.info(f"Downloaded {destination} ({total_size / (1024 * 1024):.2f} MB)")
+        else:
+            logging.info(f"Downloaded {destination} (size unknown)")
     except requests.exceptions.RequestException as e:
         logging.error(f"Failed to download {url}: {e}")
         sys.exit(1)

@@ -4,11 +4,26 @@ import numpy as np
 import socket
 import serial
 import casadi as ca
-from pynq import Overlay, allocate  # PYNQ library to interface with the FPGA
 
-# Load FPGA overlay
-overlay = Overlay("/path/to/your/bitstream.bit")  # Ensure the correct bitstream is loaded
-dma = overlay.axi_dma_0  # Access the DMA interface for data transfer
+import logging as _logging
+
+# Attempt to import PYNQ for FPGA acceleration; fall back gracefully if unavailable
+try:
+    from pynq import Overlay, allocate  # PYNQ library to interface with the FPGA
+    _pynq_available = True
+except ImportError:
+    _pynq_available = False
+
+# Load FPGA overlay only when PYNQ is present
+_overlay = None
+_dma = None
+if _pynq_available:
+    try:
+        _overlay = Overlay("/path/to/your/bitstream.bit")  # Ensure the correct bitstream is loaded
+        _dma = _overlay.axi_dma_0  # Access the DMA interface for data transfer
+    except Exception as _e:
+        _logging.warning(f"FPGA overlay unavailable: {_e}. Falling back to CPU-only mode.")
+        _pynq_available = False
 
 # Neural Network Architecture for PINN with FPGA Acceleration
 class BipedalHumanoidPINN(models.Model):
@@ -19,7 +34,7 @@ class BipedalHumanoidPINN(models.Model):
         self.fc3 = layers.Dense(256, activation='relu')
         self.fc4 = layers.Dense(60)
         self.dropout = layers.Dropout(0.4)
-        self.use_fpga = use_fpga
+        self.use_fpga = use_fpga and _pynq_available
 
     def call(self, inputs, training=False):
         x = self.fc1(inputs)
@@ -35,24 +50,166 @@ class BipedalHumanoidPINN(models.Model):
         return control_signals
 
     def offload_to_fpga(self, data):
-        # Allocate input and output buffers in external SSD
-        input_buffer = allocate(shape=data.shape, dtype=np.float32)
-        output_buffer = allocate(shape=data.shape, dtype=np.float32)
+        # Convert TensorFlow tensor to numpy array before DMA transfer
+        data_np = data.numpy() if hasattr(data, 'numpy') else np.array(data)
+
+        # Allocate input and output buffers for DMA transfer
+        input_buffer = allocate(shape=data_np.shape, dtype=np.float32)
+        output_buffer = allocate(shape=data_np.shape, dtype=np.float32)
 
         # Copy data to input buffer
-        np.copyto(input_buffer, data)
+        np.copyto(input_buffer, data_np.astype(np.float32))
 
         # Start DMA transfer to the FPGA
-        dma.sendchannel.transfer(input_buffer)
-        dma.recvchannel.transfer(output_buffer)
-        dma.sendchannel.wait()
-        dma.recvchannel.wait()
+        _dma.sendchannel.transfer(input_buffer)
+        _dma.recvchannel.transfer(output_buffer)
+        _dma.sendchannel.wait()
+        _dma.recvchannel.wait()
 
-        # Copy results from the output buffer
-        processed_data = np.copy(output_buffer)
+        # Copy results from the output buffer back as a tensor
+        processed_data = tf.constant(np.copy(output_buffer), dtype=tf.float32)
         return processed_data
 
-# Define the optimization problem using CasADi with integration of Dreamer’s planning
+
+# Dreamer World Model for high-level planning and strategic foresight
+class DreamerModel(models.Model):
+    """Recurrent world model that predicts high-level planning goals from current state."""
+
+    def __init__(self, input_dim=60, action_dim=60, hidden_dim=256):
+        super(DreamerModel, self).__init__()
+        self.hidden_dim = hidden_dim
+        self.gru = layers.GRU(hidden_dim, return_sequences=False)
+        self.fc_goal = layers.Dense(action_dim)
+
+    def call(self, inputs, training=False):
+        # Accept either (batch, input_dim) or (batch, timesteps, input_dim)
+        if len(inputs.shape) == 2:
+            inputs = tf.expand_dims(inputs, axis=1)
+        h = self.gru(inputs, training=training)
+        goals = self.fc_goal(h)
+        return goals
+
+
+# Reinforcement Learning Agent integrated with Dreamer for high-level planning
+class RLAgent(models.Model):
+    """Actor-critic RL agent that uses Dreamer goals to guide action selection."""
+
+    def __init__(self, input_dim=60, action_dim=60, hidden_dim=256, dreamer_model=None,
+                 goal_blend_weight=0.1):
+        super(RLAgent, self).__init__()
+        self.dreamer_model = dreamer_model
+        # Weight controlling how strongly Dreamer goals influence the actor input.
+        # A value of 0 disables Dreamer influence; 1 makes goals equal to state weight.
+        self.goal_blend_weight = goal_blend_weight
+        # Actor network
+        self.actor_fc1 = layers.Dense(hidden_dim, activation='relu')
+        self.actor_fc2 = layers.Dense(action_dim, activation='tanh')
+        # Critic network
+        self.critic_fc1 = layers.Dense(hidden_dim, activation='relu')
+        self.critic_fc2 = layers.Dense(1)
+
+    def actor(self, state, training=False):
+        if self.dreamer_model is not None:
+            goals = self.dreamer_model(state, training=training)
+            # Blend Dreamer planning goals into the state representation
+            combined = state + self.goal_blend_weight * goals
+        else:
+            combined = state
+        x = self.actor_fc1(combined)
+        return self.actor_fc2(x)
+
+    def critic(self, state, training=False):
+        x = self.critic_fc1(state)
+        return self.critic_fc2(x)
+
+    def call(self, inputs, training=False):
+        return self.actor(inputs, training=training)
+
+
+# Physics-informed loss combining data-driven and physical constraints
+def physics_informed_loss(pinn_model, inputs, targets=None,
+                          effort_weight=0.1, smoothness_weight=0.01, balance_weight=0.1):
+    """Compute physics-informed loss with control-effort and smoothness constraints.
+
+    Args:
+        pinn_model: The PINN model instance.
+        inputs: Input tensor of shape (batch, input_dim).
+        targets: Optional target tensor for supervised guidance.
+        effort_weight (float): Penalty weight for large control effort (default 0.1).
+        smoothness_weight (float): Penalty weight for input-gradient magnitude (default 0.01).
+        balance_weight (float): Penalty weight for non-zero mean control force (default 0.1).
+
+    Returns:
+        Scalar total loss tensor.
+    """
+    inputs_var = tf.Variable(inputs, trainable=False, dtype=tf.float32)
+
+    with tf.GradientTape() as tape:
+        tape.watch(inputs_var)
+        predictions = pinn_model(inputs_var, training=True)
+
+    grads = tape.gradient(predictions, inputs_var)
+
+    # Data loss
+    if targets is not None:
+        data_loss = tf.reduce_mean(tf.square(predictions - targets))
+    else:
+        data_loss = tf.reduce_mean(tf.square(predictions))
+
+    # Physics constraint: penalise large control effort
+    effort_loss = tf.reduce_mean(tf.square(predictions))
+
+    # Physics constraint: penalise rapid changes across the batch (smoothness)
+    smoothness_loss = tf.reduce_mean(tf.square(grads)) if grads is not None else 0.0
+
+    # Balance constraint: net control force should be near zero
+    balance_loss = tf.square(tf.reduce_mean(predictions))
+
+    total_loss = data_loss + effort_weight * effort_loss + smoothness_weight * smoothness_loss + balance_weight * balance_loss
+    return total_loss
+
+
+# Training loop coordinating PINN and RL agent with Dreamer integration
+def train(pinn_model, rl_agent, optimizer_pinn, optimizer_rl, inputs, num_epochs=1000):
+    """Train the PINN and RL agent jointly.
+
+    Args:
+        pinn_model: The PINN model instance.
+        rl_agent: The RL agent instance.
+        optimizer_pinn: Keras optimizer for the PINN.
+        optimizer_rl: Keras optimizer for the RL agent.
+        inputs: numpy array of shape (N, input_dim) used as training data.
+        num_epochs (int): Number of training epochs.
+    """
+    inputs_tensor = tf.constant(inputs, dtype=tf.float32)
+
+    for epoch in range(num_epochs):
+        # --- Train PINN ---
+        with tf.GradientTape() as tape_pinn:
+            pinn_loss = physics_informed_loss(pinn_model, inputs_tensor)
+
+        grads_pinn = tape_pinn.gradient(pinn_loss, pinn_model.trainable_variables)
+        optimizer_pinn.apply_gradients(zip(grads_pinn, pinn_model.trainable_variables))
+
+        # --- Train RL agent ---
+        with tf.GradientTape() as tape_rl:
+            actions = rl_agent(inputs_tensor, training=True)
+            values = rl_agent.critic(inputs_tensor, training=True)
+            # Simplified advantage actor-critic loss
+            actor_loss = -tf.reduce_mean(values)
+            critic_loss = tf.reduce_mean(
+                tf.square(values - tf.stop_gradient(tf.reduce_mean(values)))
+            )
+            rl_loss = actor_loss + 0.5 * critic_loss
+
+        grads_rl = tape_rl.gradient(rl_loss, rl_agent.trainable_variables)
+        optimizer_rl.apply_gradients(zip(grads_rl, rl_agent.trainable_variables))
+
+        if epoch % 100 == 0:
+            print(f"Epoch {epoch:4d}: PINN Loss = {float(pinn_loss):.4f}, RL Loss = {float(rl_loss):.4f}")
+
+
+# Define the optimization problem using CasADi with integration of Dreamer planning
 def define_optimization_problem(dreamer_goals):
     n_controls = 60
     u = ca.MX.sym('u', n_controls)
@@ -106,13 +263,29 @@ def initialize_serial(port='/dev/ttyUSB0', baudrate=9600):
         print(f"Failed to initialize serial communication: {e}")
         return None
 
-ser = initialize_serial()
+# Serial connection is initialised on demand (not at module import time)
+_ser = None
+
+def get_serial(port='/dev/ttyUSB0', baudrate=9600):
+    """Return a cached serial connection, initialising it on first call."""
+    global _ser
+    if _ser is None:
+        _ser = initialize_serial(port, baudrate)
+    return _ser
 
 # Send and receive data to/from FPGA
-def communicate_with_fpga(control_signals):
+def communicate_with_fpga(control_signals, port='/dev/ttyUSB0', baudrate=9600):
+    """Send control signals to FPGA over serial and return the processed response.
+
+    Falls back to returning the original signals when serial is unavailable.
+    """
+    ser = get_serial(port, baudrate)
+    if ser is None:
+        print("Serial connection unavailable; returning original control signals.")
+        return control_signals
     try:
         ser.write(control_signals.tobytes())
-        optimized_control_signal = ser.read(size=240)  # Adjusted size for 60 float32 values
+        optimized_control_signal = ser.read(size=240)  # 60 float32 values × 4 bytes
         optimized_control_signal = np.frombuffer(optimized_control_signal, dtype=np.float32)
         return optimized_control_signal
     except Exception as e:

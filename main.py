@@ -1,8 +1,10 @@
 import os
 import subprocess
 import numpy as np
-from tpu import BipedalHumanoidPINN, physics_informed_loss, RLAgent, train
-from mother.Software_Firmware.rosnode import initialize_ros_node, subscribe_to_ros_topics, communicate_with_fpga
+import rospy
+from tensorflow.keras import optimizers
+from tpu import BipedalHumanoidPINN, DreamerModel, RLAgent, physics_informed_loss, train, communicate_with_fpga
+from mother.Software_Firmware.rosnode import initialize_ros_node, subscribe_to_ros_topics
 
 def compile_verilog():
     """
@@ -145,10 +147,7 @@ def main():
     # Orchestrate the training process with Dreamer integration
     orchestrate_dreamer_training(pinn_model, rl_agent, optimizer_pinn, optimizer_rl, inputs, num_epochs=1000)
 
-    # Initialize serial communication with FPGA
-    ser = serial.Serial('/dev/ttyUSB0', 9600)
-
-    # Example usage of communicate_with_fpga
+    # Example usage of communicate_with_fpga (serial init handled internally)
     sensor_data = np.random.rand(60).astype(np.float32)  # Example sensor data
     control_signal = communicate_with_fpga(sensor_data)
 
