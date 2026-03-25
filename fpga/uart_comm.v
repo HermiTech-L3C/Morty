@@ -13,14 +13,16 @@ reg [7:0] rx_buffer;
 reg [7:0] tx_buffer;
 reg [3:0] bit_counter_rx;
 reg [3:0] bit_counter_tx;
-reg [9:0] baud_rate_counter;
 reg [1:0] state_rx;
 reg [1:0] state_tx;
 reg rx_ready;
 reg tx_ready;
 
 // Baud rate generator parameters
-parameter integer BAUD_RATE_DIV = 10416; // Adjust based on clock frequency and desired baud rate
+parameter integer BAUD_RATE_DIV = 10416; // 100 MHz / 9600 baud ≈ 10416 cycles per bit
+
+// baud_rate_counter must be wide enough to hold BAUD_RATE_DIV (10416 requires 14 bits)
+reg [13:0] baud_rate_counter;
 
 always @(posedge clk or posedge reset) begin
     if (reset) begin
@@ -28,7 +30,7 @@ always @(posedge clk or posedge reset) begin
         tx_buffer <= 8'b0;
         bit_counter_rx <= 4'b0;
         bit_counter_tx <= 4'b0;
-        baud_rate_counter <= 10'b0;
+        baud_rate_counter <= 14'b0;
         state_rx <= 2'b0;
         state_tx <= 2'b0;
         rx_ready <= 1'b0;
@@ -41,7 +43,7 @@ always @(posedge clk or posedge reset) begin
 
         // UART receive logic
         if (baud_rate_counter == BAUD_RATE_DIV) begin
-            baud_rate_counter <= 10'b0;
+            baud_rate_counter <= 14'b0;
             case (state_rx)
                 2'b00: begin // Start bit detection
                     if (!uart_rx) begin
@@ -72,7 +74,7 @@ always @(posedge clk or posedge reset) begin
         // UART transmit logic
         if (tx_ready) begin
             if (baud_rate_counter == BAUD_RATE_DIV) begin
-                baud_rate_counter <= 10'b0;
+                baud_rate_counter <= 14'b0;
                 case (state_tx)
                     2'b00: begin // Start bit
                         uart_tx <= 1'b0;

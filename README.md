@@ -4,9 +4,6 @@ ___
 ![img](https://github.com/HermiTech-LLC/Morty/blob/main/Images/Mort.jpg)
 ___
 
->NOTE:
->*DOCUMENTATION NEEDS UPDATING.*
-
 ## Table of Contents
 - [Overview](#overview)
 - [Directory Structure](#directory-structure)
@@ -58,6 +55,7 @@ This project implements a bipedal humanoid control system using a Physics-Inform
 - TensorFlow
 - CasADi
 - scikit-learn
+- pyserial
 - iverilog (for Verilog compilation)
 - KiCad (for electronic design)
 
@@ -69,7 +67,7 @@ Ensure all dependencies are installed using the following commands:
 ```sh
 sudo apt-get install ros-humble-desktop-full
 sudo apt-get install iverilog kicad
-pip install tensorflow casadi scikit-learn
+pip install tensorflow casadi scikit-learn pyserial
 ```
 
 ### Compile the Verilog Modules
@@ -120,13 +118,15 @@ The system is designed to control a bipedal humanoid robot. It subscribes to ROS
 ### `tpu.py`
 
 - **Location**: Root directory
-- **Purpose**: Implements the main control algorithms using the Physics-Informed Neural Network (PINN) and Reinforcement Learning (RL). It also handles communication with the FPGA and Dreamer-based optimization.
+- **Purpose**: Implements the main control algorithms using the Physics-Informed Neural Network (PINN), Reinforcement Learning (RL), and Dreamer-based world modelling. Also handles FPGA communication and CasADi-based trajectory optimisation.
 - **Functionality**:
-  - **PINN Architecture**: A deep neural network designed for stability and manipulation tasks.
-  - **Reinforcement Learning**: An RL agent to optimize control strategies over time, integrated with the Dreamer model for high-level planning.
-  - **Dreamer Integration**: Provides strategic foresight and planning, ensuring the control strategies are optimized not only for immediate stability but also for future goals and challenges.
-  - **Optimization**: Uses CasADi to define and solve optimization problems for control signals, influenced by Dreamerâs planning.
-  - **Communication**: Establishes serial communication with the FPGA and TCP/IP communication with the ROS node.
+  - **`BipedalHumanoidPINN`**: A deep neural network (512 → 512 → 256 → 60) for stability and manipulation. When PYNQ is available, the intermediate layer is offloaded to the FPGA via DMA.
+  - **`DreamerModel`**: A GRU-based recurrent world model that produces high-level planning goals from current state, providing strategic foresight to the RL agent.
+  - **`RLAgent`**: An actor-critic RL agent that blends Dreamer goals into its policy to optimise control strategies over time.
+  - **`physics_informed_loss`**: Combines data-driven loss with control-effort, smoothness, and balance physics constraints.
+  - **`train`**: Joint training loop for the PINN and RL agent with periodic loss logging.
+  - **`optimize_with_casadi`**: Uses CasADi/IPOPT to refine control signals based on Dreamer goals.
+  - **`communicate_with_fpga`**: Exchanges control signals with the FPGA over serial, with graceful fallback when hardware is absent.
 
 ### `uart_comm.v`
 

@@ -91,10 +91,13 @@ def subscribe_to_ros_topics():
 subscribe_to_ros_topics()
 
 # Initialize TCP/IP communication with TPU
+TPU_IP_ADDRESS = '127.0.0.1'  # Replace with the actual TPU/tpu.py server IP
+TPU_PORT = 5000               # Replace with the actual port used by tpu.py
+
 def initialize_socket_connection():
     try:
         client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        client_socket.connect(('TPU_IP_ADDRESS', TPU_PORT))  # Replace with actual TPU IP and PORT
+        client_socket.connect((TPU_IP_ADDRESS, TPU_PORT))
         return client_socket
     except socket.error as e:
         rospy.logerr(f"Failed to initialize socket connection: {e}")
@@ -104,23 +107,32 @@ client_socket = initialize_socket_connection()
 
 # Send data to TPU and receive control signals
 def send_data_to_tpu():
-    if client_socket:
-        try:
-            input_data = np.hstack((
-                data_storage["joint_angles_normalized"][-1],
-                data_storage["velocities_normalized"][-1],
-                data_storage["torques_normalized"][-1],
-                data_storage["foot_forces_normalized"][-1],
-                data_storage["hand_joint_angles_normalized"][-1],
-                data_storage["object_forces_normalized"][-1]
-            )).astype(np.float32)
+    if not client_socket:
+        return
+    # Ensure all normalized buffers are populated before sending
+    required_keys = [
+        "joint_angles_normalized", "velocities_normalized", "torques_normalized",
+        "foot_forces_normalized", "hand_joint_angles_normalized", "object_forces_normalized",
+    ]
+    if not all(k in data_storage for k in required_keys):
+        rospy.logdebug("Skipping TPU send: normalised sensor buffers not yet fully populated.")
+        return
+    try:
+        input_data = np.hstack((
+            data_storage["joint_angles_normalized"][-1],
+            data_storage["velocities_normalized"][-1],
+            data_storage["torques_normalized"][-1],
+            data_storage["foot_forces_normalized"][-1],
+            data_storage["hand_joint_angles_normalized"][-1],
+            data_storage["object_forces_normalized"][-1]
+        )).astype(np.float32)
 
-            client_socket.sendall(input_data.tobytes())
-            control_signal_data = client_socket.recv(240)  # 60 float32 values
-            control_signals = np.frombuffer(control_signal_data, dtype=np.float32)
-            publish_control_signals(control_signals)
-        except socket.error as e:
-            rospy.logerr(f"Error in communication with TPU: {e}")
+        client_socket.sendall(input_data.tobytes())
+        control_signal_data = client_socket.recv(240)  # 60 float32 values
+        control_signals = np.frombuffer(control_signal_data, dtype=np.float32)
+        publish_control_signals(control_signals)
+    except socket.error as e:
+        rospy.logerr(f"Error in communication with TPU: {e}")
 
 # Publish control signals
 def publish_control_signals(control_signals):
